@@ -1,0 +1,30 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2.0
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    restart: unless-stopped
+
+  simulator:
+    build:
+      context: .
+      dockerfile: simulator/Dockerfile
+    environment:
+      MQTT_HOST: ${MQTT_HOST:-mosquitto}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      SITE_ID: ${SITE_ID:-site-001}
+      BATTERY_ID: ${BATTERY_ID:-BAT-001}
+      SIMULATOR_SCENARIO: ${SIMULATOR_SCENARIO:-NORMAL}
+      PUBLISH_INTERVAL_SECONDS: ${PUBLISH_INTERVAL_SECONDS:-5}
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:
+

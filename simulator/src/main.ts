@@ -1,0 +1,39 @@
+import { MqttPublisher } from "./mqtt-publisher.js";
+import { BatterySimulator } from "./simulator.js";
+import type { Scenario } from "./types.js";
+
+const scenarios: Scenario[] = ["NORMAL", "LOW_SOC", "HIGH_TEMPERATURE", "CELL_IMBALANCE", "FAULT"];
+const setting = (name: string, fallback: string): string => process.env[name]?.trim() || fallback;
+const sleep = (milliseconds: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+async function main(): Promise<void> {
+  const scenario = setting("SIMULATOR_SCENARIO", "NORMAL").toUpperCase() as Scenario;
+  if (!scenarios.includes(scenario)) throw new Error(`Unknown SIMULATOR_SCENARIO '${scenario}'. Choose: ${scenarios.join(", ")}`);
+  const siteId = setting("SITE_ID", "site-001");
+  const batteryId = setting("BATTERY_ID", "BAT-001");
+  const simulator = new BatterySimulator(siteId, batteryId, scenario);
+  const publisher = new MqttPublisher(setting("MQTT_HOST", "mosquitto"), Number(setting("MQTT_PORT", "1883")), siteId, batteryId, setting("MQTT_USERNAME", ""), setting("MQTT_PASSWORD", ""));
+  const interval = Number(setting("PUBLISH_INTERVAL_SECONDS", "5")) * 1000;
+  let stopping = false;
+  const stop = () => { stopping = true; };
+  process.on("SIGINT", stop);
+  process.on("SIGTERM", stop);
+  await publisher.connect();
+  console.info(`Connected to MQTT broker; scenario=${scenario}`);
+  await publisher.publishDiscovery();
+  await publisher.publish("status", simulator.status("online"), true);
+  try {
+    while (!stopping) {
+      await publisher.publish("telemetry", simulator.step());
+      const event = simulator.nextEvent();
+      if (event) await publisher.publish("event", event);
+      await sleep(interval);
+    }
+  } finally {
+    if (publisher) await publisher.publish("status", simulator.status("offline"), true).catch(() => undefined);
+    await publisher.close();
+  }
+}
+
+main().catch((error: unknown) => { console.error(error); process.exitCode = 1; });
+
