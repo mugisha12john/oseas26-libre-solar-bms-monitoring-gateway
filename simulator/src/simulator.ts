@@ -1,76 +1,278 @@
-import type { BmsEvent, Scenario, Status, Telemetry } from "./types.js";
+import { scenarioHandlers } from "./scenarios/index.js";
+import type {
+  BatteryState,
+  BmsEvent,
+  Scenario,
+  Status,
+  Telemetry,
+} from "./types.js";
+import { cellMetrics, round } from "./scenarios/common.js";
 
 const timestamp = (): string => new Date().toISOString();
-const round = (value: number, places = 3): number => Number(value.toFixed(places));
 
 export class BatterySimulator {
-  private socPct: number;
-  private temperatureC: number;
-  private cellVoltages: number[];
+  private readonly cycles = 324;
   private tick = 0;
-  private eventEmitted = false;
-  readonly cycles = 324;
+  private state: BatteryState;
+  private eventFlags = new Set<string>();
 
-  constructor(readonly siteId: string, readonly batteryId: string, readonly scenario: Scenario = "NORMAL") {
-    this.socPct = scenario === "LOW_SOC" ? 19.5 : 78.4;
-    this.temperatureC = scenario === "HIGH_TEMPERATURE" ? 41.5 : 32.4;
-    this.cellVoltages = [3.234, 3.236, 3.238, 3.24];
-    if (scenario === "CELL_IMBALANCE") this.cellVoltages[3] = 3.31;
+  constructor(
+    readonly siteId: string,
+    readonly batteryId: string,
+    readonly scenario: Scenario = "NORMAL",
+  ) {
+    const defaultCellVoltages = [3.234, 3.236, 3.238, 3.24];
+    this.state = {
+      socPct:
+        scenario === "LOW_SOC"
+          ? 30
+          : scenario === "HIGH_TEMPERATURE"
+            ? 72
+            : scenario === "CELL_IMBALANCE"
+              ? 76
+              : scenario === "FAULT"
+                ? 15
+                : scenario === "RECOVERY"
+                  ? 18
+                  : scenario === "CHARGING"
+                    ? 55
+                    : scenario === "DISCHARGING"
+                      ? 75
+                      : scenario === "OVER_CURRENT"
+                        ? 68
+                        : scenario === "UNDER_VOLTAGE"
+                          ? 70
+                          : 78.5,
+      temperatureC:
+        scenario === "HIGH_TEMPERATURE"
+          ? 41.5
+          : scenario === "FAULT"
+            ? 48
+            : scenario === "RECOVERY"
+              ? 45
+              : 32.4,
+      packCurrentA:
+        scenario === "CHARGING"
+          ? -12.5
+          : scenario === "DISCHARGING"
+            ? 8.5
+            : scenario === "OVER_CURRENT"
+              ? 35
+              : scenario === "UNDER_VOLTAGE"
+                ? 8.2
+                : 8.5,
+      packVoltageV: defaultCellVoltages.reduce((sum, cell) => sum + cell, 0),
+      cellVoltages: [...defaultCellVoltages],
+      cycles: this.cycles,
+    };
   }
 
   step(): Telemetry {
     this.tick += 1;
-    if (this.scenario === "NORMAL") {
-      this.socPct = Math.max(0, this.socPct - 0.04);
-      this.temperatureC += this.tick % 2 ? 0.03 : -0.02;
-    } else if (this.scenario === "LOW_SOC") {
-      this.socPct = Math.max(0, this.socPct - 0.15);
-      this.temperatureC = 31.5;
-    } else if (this.scenario === "HIGH_TEMPERATURE") {
-      this.temperatureC = Math.min(46, this.temperatureC + 0.8);
-      this.socPct = Math.max(0, this.socPct - 0.03);
-    } else if (this.scenario === "CELL_IMBALANCE") {
-      this.cellVoltages[3] = Math.min(3.42, this.cellVoltages[3] + 0.006);
-      this.socPct = Math.max(0, this.socPct - 0.03);
-    } else {
-      this.socPct = Math.max(0, this.socPct - 0.01);
-    }
+    this.state = scenarioHandlers[this.scenario](this.state, this.tick);
+    const metrics = cellMetrics(this.state.cellVoltages);
+    const { state, error_flags: errorFlags } = this.bmsState(metrics);
 
-    const voltages = this.cellVoltages.map((value) => round(value));
-    const minimum = Math.min(...voltages);
-    const maximum = Math.max(...voltages);
-    const average = voltages.reduce((sum, value) => sum + value, 0) / voltages.length;
-    const { state, error_flags: errorFlags } = this.state();
     return {
-      schema_version: "1.0", battery_id: this.batteryId, site_id: this.siteId, timestamp: timestamp(),
-      battery: { pack_voltage_v: round(voltages.reduce((sum, value) => sum + value, 0)), pack_current_a: this.scenario === "FAULT" ? 0 : round(8.4 + (this.tick % 4) * 0.1, 2), soc_pct: round(this.socPct, 2), temperature_c: round(this.temperatureC, 2), cycles: this.cycles },
-      cells: { voltages_v: voltages, min_voltage_v: minimum, max_voltage_v: maximum, avg_voltage_v: round(average), imbalance_v: round(maximum - minimum) },
-      bms: { state, balancing: this.scenario === "CELL_IMBALANCE", error_flags: errorFlags }
+      schema_version: "1.0",
+      battery_id: this.batteryId,
+      site_id: this.siteId,
+      timestamp: timestamp(),
+      battery: {
+        pack_voltage_v: round(this.state.packVoltageV, 3),
+        pack_current_a: round(this.state.packCurrentA, 3),
+        power_w: round(this.state.packVoltageV * this.state.packCurrentA, 3),
+        soc_pct: round(this.state.socPct, 2),
+        temperature_c: round(this.state.temperatureC, 2),
+        cycles: this.cycles,
+      },
+      cells: metrics,
+      bms: {
+        state,
+        balancing:
+          this.scenario === "CELL_IMBALANCE" || this.scenario === "RECOVERY"
+            ? metrics.imbalance_v > 0.02
+            : false,
+        error_flags: errorFlags,
+      },
     };
   }
 
   nextEvent(): BmsEvent | undefined {
-    if (this.eventEmitted || this.scenario === "NORMAL") return undefined;
-    this.eventEmitted = true;
-    const definitions: Record<Exclude<Scenario, "NORMAL">, [BmsEvent["type"], BmsEvent["severity"], string, number | undefined, string | undefined]> = {
-      LOW_SOC: ["LOW_SOC", "WARNING", "Battery state of charge is below the warning threshold", this.socPct, "%"],
-      HIGH_TEMPERATURE: ["HIGH_TEMPERATURE", "WARNING", "Battery temperature exceeded warning threshold", this.temperatureC, "°C"],
-      CELL_IMBALANCE: ["CELL_IMBALANCE", "WARNING", "Cell voltage imbalance exceeded warning threshold", Math.max(...this.cellVoltages) - Math.min(...this.cellVoltages), "V"],
-      FAULT: ["BMS_FAULT", "CRITICAL", "BMS reported a simulated protection fault", undefined, undefined]
-    };
-    const [type, severity, message, value, unit] = definitions[this.scenario];
-    return { schema_version: "1.0", event_id: `sim-${this.scenario.toLowerCase()}-${String(this.tick).padStart(4, "0")}`, battery_id: this.batteryId, site_id: this.siteId, timestamp: timestamp(), type, severity, message, ...(value === undefined ? {} : { value: round(value), unit }) };
+    const metrics = cellMetrics(this.state.cellVoltages);
+    const imbalance = metrics.imbalance_v;
+    const minCellVoltage = metrics.min_voltage_v;
+    const maxCellVoltage = metrics.max_voltage_v;
+    const current = this.state.packCurrentA;
+    const lowSocThreshold = this.state.socPct <= 30;
+    const temperatureThreshold = this.state.temperatureC >= 35;
+    const overCurrentThreshold = current >= 30;
+    const underVoltageThreshold = minCellVoltage <= 3.15;
+    const faultThreshold =
+      this.state.socPct <= 20 ||
+      this.state.temperatureC >= 45 ||
+      imbalance >= 0.08 ||
+      this.scenario === "FAULT";
+
+    if (this.scenario === "NORMAL") return undefined;
+    if (
+      this.scenario === "LOW_SOC" &&
+      lowSocThreshold &&
+      !this.eventFlags.has("LOW_SOC")
+    ) {
+      this.eventFlags.add("LOW_SOC");
+      return this.makeEvent(
+        "LOW_SOC",
+        "WARNING",
+        "Battery state of charge is below the warning threshold",
+        this.state.socPct,
+        "%",
+      );
+    }
+    if (
+      this.scenario === "HIGH_TEMPERATURE" &&
+      temperatureThreshold &&
+      !this.eventFlags.has("HIGH_TEMPERATURE")
+    ) {
+      this.eventFlags.add("HIGH_TEMPERATURE");
+      return this.makeEvent(
+        "HIGH_TEMPERATURE",
+        "WARNING",
+        "Battery temperature exceeded warning threshold",
+        this.state.temperatureC,
+        "°C",
+      );
+    }
+    if (
+      this.scenario === "CELL_IMBALANCE" &&
+      imbalance >= 0.05 &&
+      !this.eventFlags.has("CELL_IMBALANCE")
+    ) {
+      this.eventFlags.add("CELL_IMBALANCE");
+      return this.makeEvent(
+        "CELL_IMBALANCE",
+        "WARNING",
+        "Cell voltage imbalance exceeded warning threshold",
+        imbalance,
+        "V",
+      );
+    }
+    if (
+      this.scenario === "OVER_CURRENT" &&
+      overCurrentThreshold &&
+      !this.eventFlags.has("OVER_CURRENT")
+    ) {
+      this.eventFlags.add("OVER_CURRENT");
+      return this.makeEvent(
+        "OVER_CURRENT",
+        "CRITICAL",
+        "Pack current exceeded the configured over-current threshold",
+        current,
+        "A",
+      );
+    }
+    if (
+      this.scenario === "UNDER_VOLTAGE" &&
+      underVoltageThreshold &&
+      !this.eventFlags.has("UNDER_VOLTAGE")
+    ) {
+      this.eventFlags.add("UNDER_VOLTAGE");
+      return this.makeEvent(
+        "UNDER_VOLTAGE",
+        "WARNING",
+        "Pack voltage fell below the configured under-voltage threshold",
+        minCellVoltage,
+        "V",
+      );
+    }
+    if (
+      this.scenario === "FAULT" &&
+      faultThreshold &&
+      !this.eventFlags.has("BMS_FAULT")
+    ) {
+      this.eventFlags.add("BMS_FAULT");
+      return this.makeEvent(
+        "BMS_FAULT",
+        "CRITICAL",
+        "BMS reported a simulated protection fault",
+        undefined,
+        undefined,
+      );
+    }
+    if (
+      this.scenario === "RECOVERY" &&
+      this.state.socPct > 25 &&
+      this.state.temperatureC < 35 &&
+      imbalance < 0.02 &&
+      !this.eventFlags.has("RECOVERY")
+    ) {
+      this.eventFlags.add("RECOVERY");
+      return undefined;
+    }
+    return undefined;
   }
 
   status(status: Status["status"]): Status {
-    return { schema_version: "1.0", battery_id: this.batteryId, site_id: this.siteId, status, timestamp: timestamp() };
+    return {
+      schema_version: "1.0",
+      battery_id: this.batteryId,
+      site_id: this.siteId,
+      status,
+      timestamp: timestamp(),
+    };
   }
 
-  private state(): Pick<Telemetry["bms"], "state" | "error_flags"> {
-    if (this.scenario === "LOW_SOC") return { state: "LOW_SOC", error_flags: [] };
-    if (this.scenario === "HIGH_TEMPERATURE" || this.scenario === "CELL_IMBALANCE") return { state: "WARNING", error_flags: [] };
-    if (this.scenario === "FAULT") return { state: "FAULT", error_flags: ["SIMULATED_PROTECTION_FAULT"] };
+  private makeEvent(
+    type: BmsEvent["type"],
+    severity: BmsEvent["severity"],
+    message: string,
+    value?: number,
+    unit?: string,
+  ): BmsEvent {
+    const event: BmsEvent = {
+      schema_version: "1.0",
+      event_id: `sim-${this.scenario.toLowerCase()}-${String(this.tick).padStart(4, "0")}`,
+      battery_id: this.batteryId,
+      site_id: this.siteId,
+      timestamp: timestamp(),
+      type,
+      severity,
+      message,
+    };
+    if (value !== undefined) event.value = round(value, 3);
+    if (unit) event.unit = unit;
+    return event;
+  }
+
+  private bmsState(
+    metrics: ReturnType<typeof cellMetrics>,
+  ): Pick<Telemetry["bms"], "state" | "error_flags"> {
+    const imbalance = metrics.imbalance_v;
+    const lowSoc = this.state.socPct <= 30;
+    const hot = this.state.temperatureC >= 35;
+    const overCurrent = this.state.packCurrentA >= 30;
+    const underVoltage = metrics.min_voltage_v <= 3.15;
+    const fault =
+      this.state.socPct <= 20 ||
+      this.state.temperatureC >= 45 ||
+      imbalance >= 0.08 ||
+      this.scenario === "FAULT";
+
+    if (this.scenario === "FAULT" || fault)
+      return {
+        state: "FAULT",
+        error_flags: ["OVER_TEMPERATURE", "CELL_VOLTAGE_FAULT", "LOW_SOC"],
+      };
+    if (lowSoc) return { state: "LOW_SOC", error_flags: ["LOW_SOC"] };
+    if (overCurrent)
+      return {
+        state: "FAULT",
+        error_flags: ["OVER_CURRENT", "HIGH_TEMPERATURE"],
+      };
+    if (underVoltage)
+      return { state: "WARNING", error_flags: ["UNDER_VOLTAGE"] };
+    if (hot || imbalance >= 0.05)
+      return { state: "WARNING", error_flags: ["HIGH_TEMPERATURE"] };
     return { state: "NORMAL", error_flags: [] };
   }
 }
-
