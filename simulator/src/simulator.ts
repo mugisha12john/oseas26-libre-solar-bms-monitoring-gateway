@@ -15,12 +15,14 @@ export class BatterySimulator {
   private tick = 0;
   private state: BatteryState;
   private eventFlags = new Set<string>();
+  private scenarioValue: Scenario;
 
   constructor(
     readonly siteId: string,
     readonly batteryId: string,
-    readonly scenario: Scenario = "NORMAL",
+    scenario: Scenario = "NORMAL",
   ) {
+    this.scenarioValue = scenario;
     const defaultCellVoltages = [3.234, 3.236, 3.238, 3.24];
     this.state = {
       socPct:
@@ -67,6 +69,15 @@ export class BatterySimulator {
     };
   }
 
+  get scenario(): Scenario {
+    return this.scenarioValue;
+  }
+
+  setScenario(scenario: Scenario): void {
+    this.scenarioValue = scenario;
+    this.eventFlags.clear();
+  }
+
   step(): Telemetry {
     this.tick += 1;
     this.state = scenarioHandlers[this.scenario](this.state, this.tick);
@@ -84,6 +95,8 @@ export class BatterySimulator {
         power_w: round(this.state.packVoltageV * this.state.packCurrentA, 3),
         soc_pct: round(this.state.socPct, 2),
         temperature_c: round(this.state.temperatureC, 2),
+        soh_percent: round(Math.max(0, 100 - this.cycles * 0.02), 2),
+        cycle_count: this.cycles,
         cycles: this.cycles,
       },
       cells: metrics,
@@ -219,6 +232,7 @@ export class BatterySimulator {
       site_id: this.siteId,
       status,
       timestamp: timestamp(),
+      last_seen: timestamp(),
     };
   }
 

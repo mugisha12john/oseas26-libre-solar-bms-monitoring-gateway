@@ -20,7 +20,7 @@
     "timestamp": {
       "type": "string",
       "format": "date-time",
-      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?(?:Z|[+-][0-9]{2}:[0-9]{2})$"
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]+)?Z$"
     },
     "battery": {
       "type": "object",
@@ -31,7 +31,8 @@
         "power_w",
         "soc_pct",
         "temperature_c",
-        "cycles"
+        "soh_percent",
+        "cycle_count"
       ],
       "properties": {
         "pack_voltage_v": { "type": "number", "minimum": 0 },
@@ -39,6 +40,8 @@
         "power_w": { "type": "number" },
         "soc_pct": { "type": "number", "minimum": 0, "maximum": 100 },
         "temperature_c": { "type": "number" },
+        "soh_percent": { "type": "number", "minimum": 0, "maximum": 100 },
+        "cycle_count": { "type": "integer", "minimum": 0 },
         "cycles": { "type": "integer", "minimum": 0 }
       }
     },

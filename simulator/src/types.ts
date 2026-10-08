@@ -10,6 +10,12 @@ export type Scenario =
   | "FAULT"
   | "RECOVERY";
 
+export interface ControlCommand {
+  schema_version: "1.0";
+  command: "SET_SCENARIO" | "SET_TIME_SCALE";
+  value: Scenario | number;
+}
+
 export interface BatteryState {
   socPct: number;
   temperatureC: number;
@@ -30,6 +36,8 @@ export interface Telemetry {
     power_w: number;
     soc_pct: number;
     temperature_c: number;
+    soh_percent: number;
+    cycle_count: number;
     cycles: number;
   };
   cells: {
@@ -73,4 +81,5 @@ export interface Status {
   site_id: string;
   status: "online" | "offline";
   timestamp: string;
+  last_seen: string;
 }

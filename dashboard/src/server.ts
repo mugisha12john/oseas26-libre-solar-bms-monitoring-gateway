@@ -51,6 +51,7 @@ type StatusMessage = {
   site_id: string;
   status: "online" | "offline";
   timestamp: string;
+  last_seen?: string;
 };
 
 type Snapshot = {
@@ -60,7 +61,10 @@ type Snapshot = {
   status?: StatusMessage;
   events: EventMessage[];
   lastUpdatedAt?: string;
+  streamId: string;
 };
+
+const newStreamId = (): string => `stream-${Date.now()}`;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, "../public");
@@ -70,6 +74,7 @@ const state: Snapshot = {
   siteId: "site-001",
   batteryId: "BAT-001",
   events: [],
+  streamId: newStreamId(),
 };
 
 const sendSnapshot = (ws: { send: (data: string) => void }) => {
@@ -118,6 +123,16 @@ client.on("message", (topic, payload) => {
       logger("telemetry update", parsed.battery?.soc_pct ?? "n/a");
     }
     if (topic.endsWith("/status")) {
+      const isNewOnlineSession =
+        parsed.status === "online" &&
+        state.status?.status === "online" &&
+        parsed.timestamp !== state.status.timestamp;
+      if (
+        (parsed.status === "offline" && state.status?.status !== "offline") ||
+        isNewOnlineSession
+      ) {
+        state.streamId = newStreamId();
+      }
       state.status = parsed as StatusMessage;
       logger("status update", parsed.status);
     }

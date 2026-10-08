@@ -1,6 +1,6 @@
 import { MqttPublisher } from "./mqtt-publisher.js";
 import { BatterySimulator } from "./simulator.js";
-import type { Scenario } from "./types.js";
+import type { ControlCommand, Scenario } from "./types.js";
 
 const scenarios: Scenario[] = [
   "NORMAL",
@@ -40,6 +40,7 @@ async function main(): Promise<void> {
     setting("MQTT_PASSWORD", ""),
   );
   const interval = Number(setting("PUBLISH_INTERVAL_SECONDS", "1")) * 1000;
+  let timeScale = 1;
   let stopping = false;
   const stop = () => {
     stopping = true;
@@ -47,6 +48,15 @@ async function main(): Promise<void> {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
   await publisher.connect();
+  await publisher.subscribeControl((command: ControlCommand) => {
+    if (command.command === "SET_SCENARIO") {
+      simulator.setScenario(command.value as Scenario);
+      console.info(`Scenario changed at runtime: ${simulator.scenario}`);
+      return;
+    }
+    timeScale = command.value as number;
+    console.info(`Time scale changed at runtime: ${timeScale}`);
+  });
   console.info(`Connected to MQTT broker; scenario=${scenario}`);
   await publisher.publishDiscovery();
   await publisher.publish("status", simulator.status("online"), true);
@@ -56,7 +66,7 @@ async function main(): Promise<void> {
       await publisher.publish("telemetry", telemetry);
       const event = simulator.nextEvent();
       if (event) await publisher.publish("event", event);
-      await sleep(interval);
+      await sleep(interval / timeScale);
     }
   } finally {
     if (publisher)

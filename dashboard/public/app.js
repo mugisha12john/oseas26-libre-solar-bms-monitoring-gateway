@@ -7,6 +7,7 @@ const statusText = document.getElementById("status-text");
 const onlineIndicator = document.getElementById("online-indicator");
 const updatedText = document.getElementById("last-updated");
 const stateValue = document.getElementById("state-value");
+const chartTooltip = document.getElementById("chart-tooltip");
 
 const fields = {
   soc: { label: "SOC", get: (d) => d.battery?.soc_pct ?? null, suffix: "%" },
@@ -40,6 +41,7 @@ const history = {
   temperature: [],
 };
 let selectedSeries = "soc";
+let activeStreamId = null;
 
 function formatValue(value, suffix = "") {
   if (value === null || value === undefined || Number.isNaN(value)) return "--";
@@ -58,6 +60,30 @@ function timeAgo(iso) {
     (Date.now() - new Date(iso).getTime()) / 1000,
   );
   return `${Math.round(diffSeconds)}s ago`;
+}
+
+function showChartTooltip(entry, x) {
+  const config = fields[selectedSeries];
+  const timestamp = new Date(entry.timestamp).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  chartTooltip.textContent = `${config.label}: ${formatValue(entry.value, ` ${config.suffix}`)}\n${timestamp}`;
+  chartTooltip.hidden = false;
+  chartTooltip.style.left = `${Math.min(Math.max((x / 600) * 100, 4), 76)}%`;
+}
+
+function hideChartTooltip() {
+  chartTooltip.hidden = true;
+}
+
+function resetLiveHistory() {
+  Object.values(history).forEach((series) => {
+    series.length = 0;
+  });
+  eventList.innerHTML = "";
+  hideChartTooltip();
 }
 
 function renderChart() {
@@ -116,6 +142,38 @@ function renderChart() {
   path.setAttribute("stroke-width", "3");
   chart.appendChild(path);
 
+  const hoverLine = document.createElementNS(
+    "http://www.w3.org/2000/svg",
+    "line",
+  );
+  hoverLine.setAttribute("y1", padding);
+  hoverLine.setAttribute("y2", height - padding);
+  hoverLine.setAttribute("stroke", "rgba(97,218,251,0.45)");
+  hoverLine.setAttribute("stroke-dasharray", "4 4");
+  hoverLine.setAttribute("visibility", "hidden");
+  chart.appendChild(hoverLine);
+
+  series.forEach((entry, index) => {
+    const [x, y] = linePoints.split(" ")[index].split(",");
+    const point = document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "circle",
+    );
+    point.setAttribute("cx", x);
+    point.setAttribute("cy", y);
+    point.setAttribute("r", "7");
+    point.setAttribute("fill", "transparent");
+    point.setAttribute("stroke", "transparent");
+    point.addEventListener("mouseenter", () => {
+      hoverLine.setAttribute("x1", x);
+      hoverLine.setAttribute("x2", x);
+      hoverLine.setAttribute("visibility", "visible");
+      showChartTooltip(entry, Number(x));
+    });
+    point.addEventListener("mouseleave", hideChartTooltip);
+    chart.appendChild(point);
+  });
+
   const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
   label.setAttribute("x", width - 120);
   label.setAttribute("y", 24);
@@ -161,6 +219,14 @@ function renderEvents(events) {
 }
 
 function updateDashboard(snapshot) {
+  if (
+    snapshot.streamId &&
+    activeStreamId &&
+    snapshot.streamId !== activeStreamId
+  ) {
+    resetLiveHistory();
+  }
+  activeStreamId = snapshot.streamId || activeStreamId;
   const telemetry = snapshot.telemetry || null;
   const status = snapshot.status || { status: "offline" };
   if (!telemetry) {

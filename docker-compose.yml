@@ -42,3 +42,15 @@ services:
 volumes:
   mosquitto-data:
   mosquitto-log:
+
+  # homeassistant:
+  #   container_name: homeassistant
+  #   image: ghcr.io/home-assistant/home-assistant:stable
+  #   restart: unless-stopped
+  #   privileged: true
+  #   network_mode: host
+  #   environment:
+  #     - TZ=Africa/Kigali
+  #   volumes:
+  #     - /home/mugisha-buban/homeassistant:/config
+  #     - /run/dbus:/run/dbus:ro

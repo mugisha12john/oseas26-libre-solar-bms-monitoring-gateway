@@ -150,3 +150,16 @@ test("events are emitted once when a threshold is entered", () => {
   assert.equal(simulator.nextEvent()?.type, "LOW_SOC");
   assert.equal(simulator.nextEvent(), undefined);
 });
+
+test("scenario can change at runtime and starts a fresh event condition", () => {
+  const simulator = new BatterySimulator("site-001", "BAT-001", "NORMAL");
+  simulator.setScenario("HIGH_TEMPERATURE");
+  simulator.step();
+  simulator.step();
+  const hotTelemetry = simulator.step();
+  assert.ok(hotTelemetry.battery.temperature_c > 35);
+  assert.equal(simulator.nextEvent()?.type, "HIGH_TEMPERATURE");
+
+  simulator.setScenario("NORMAL");
+  assert.equal(simulator.nextEvent(), undefined);
+});

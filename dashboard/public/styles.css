@@ -176,6 +176,25 @@ body {
   background: rgba(7, 16, 27, 0.75);
   border: 1px solid var(--line);
 }
+.chart-wrap {
+  position: relative;
+}
+.chart-tooltip {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  min-width: 150px;
+  padding: 8px 10px;
+  border: 1px solid rgba(97, 218, 251, 0.45);
+  border-radius: 8px;
+  background: rgba(7, 16, 27, 0.94);
+  color: var(--text);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  white-space: pre-line;
+  pointer-events: none;
+  z-index: 2;
+}
 .cell-bars {
   display: grid;
   gap: 12px;

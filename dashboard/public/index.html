@@ -64,11 +64,19 @@
               <button data-series="temperature">Temperature</button>
             </div>
           </div>
-          <svg
-            id="history-chart"
-            viewBox="0 0 600 220"
-            preserveAspectRatio="none"
-          ></svg>
+          <div class="chart-wrap">
+            <svg
+              id="history-chart"
+              viewBox="0 0 600 220"
+              preserveAspectRatio="none"
+            ></svg>
+            <div
+              id="chart-tooltip"
+              class="chart-tooltip"
+              role="status"
+              hidden
+            ></div>
+          </div>
         </article>
 
         <article class="card cell-panel">

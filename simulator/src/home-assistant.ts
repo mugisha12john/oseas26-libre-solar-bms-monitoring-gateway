@@ -8,8 +8,10 @@ export function discoveryMessages(
     identifiers: [deviceId],
     name: `Libre Solar ${batteryId}`,
     manufacturer: "Libre Solar",
-    model: "BMS monitoring gateway",
+    model: "BMS C1",
   };
+  const telemetryTopic = `${baseTopic}/telemetry`;
+  const statusTopic = `${baseTopic}/status`;
   const metrics = [
     ["soc", "Battery SOC", "battery.soc_pct", "%", "battery", "measurement"],
     [
@@ -62,9 +64,49 @@ export function discoveryMessages(
       "measurement",
     ],
     [
+      "cell_1_voltage",
+      "Cell 1 Voltage",
+      "cells.voltages_v[0]",
+      "V",
+      "voltage",
+      "measurement",
+    ],
+    [
+      "cell_2_voltage",
+      "Cell 2 Voltage",
+      "cells.voltages_v[1]",
+      "V",
+      "voltage",
+      "measurement",
+    ],
+    [
+      "cell_3_voltage",
+      "Cell 3 Voltage",
+      "cells.voltages_v[2]",
+      "V",
+      "voltage",
+      "measurement",
+    ],
+    [
+      "cell_4_voltage",
+      "Cell 4 Voltage",
+      "cells.voltages_v[3]",
+      "V",
+      "voltage",
+      "measurement",
+    ],
+    [
+      "average_cell_voltage",
+      "Average Cell Voltage",
+      "cells.avg_voltage_v",
+      "V",
+      "voltage",
+      "measurement",
+    ],
+    [
       "cycles",
-      "Battery Cycles",
-      "battery.cycles",
+      "Cycle Count",
+      "battery.cycle_count",
       undefined,
       undefined,
       "total_increasing",
@@ -76,8 +118,13 @@ export function discoveryMessages(
       const config: Record<string, unknown> = {
         name,
         unique_id: `${deviceId}_${key}`,
-        state_topic: `${baseTopic}/telemetry`,
+        object_id: `${deviceId}_${key}`,
+        state_topic: telemetryTopic,
         value_template: `{{ value_json.${path} }}`,
+        availability_topic: statusTopic,
+        availability_template: "{{ value_json.status }}",
+        payload_available: "online",
+        payload_not_available: "offline",
         device,
       };
       if (unit) config.unit_of_measurement = unit;
@@ -94,10 +141,28 @@ export function discoveryMessages(
     JSON.stringify({
       name: "Balancing",
       unique_id: `${deviceId}_balancing`,
-      state_topic: `${baseTopic}/telemetry`,
+      object_id: `${deviceId}_balancing`,
+      state_topic: telemetryTopic,
       value_template: "{{ value_json.bms.balancing }}",
+      availability_topic: statusTopic,
+      availability_template: "{{ value_json.status }}",
+      payload_available: "online",
+      payload_not_available: "offline",
       payload_on: "True",
       payload_off: "False",
+      device,
+    }),
+  ]);
+  messages.push([
+    `homeassistant/binary_sensor/${deviceId}/online/config`,
+    JSON.stringify({
+      name: "Online",
+      unique_id: `${deviceId}_online`,
+      object_id: `${deviceId}_online`,
+      state_topic: statusTopic,
+      value_template: "{{ value_json.status }}",
+      payload_on: "online",
+      payload_off: "offline",
       device,
     }),
   ]);
