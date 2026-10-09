@@ -24,6 +24,25 @@ services:
       - mosquitto
     restart: unless-stopped
 
+  mpm-bridge:
+    build:
+      context: .
+      dockerfile: integrations/mpm-bridge/Dockerfile
+    environment:
+      MQTT_HOST: ${MQTT_HOST:-mosquitto}
+      MQTT_PORT: ${MQTT_PORT:-1883}
+      MQTT_USERNAME: ${MQTT_USERNAME:-}
+      MQTT_PASSWORD: ${MQTT_PASSWORD:-}
+      MPM_BASE_URL: ${MPM_BASE_URL:-http://host.docker.internal:8000}
+      MPM_API_KEY: ${MPM_API_KEY:-}
+      MPM_INTERVAL_SECONDS: ${MPM_INTERVAL_SECONDS:-60}
+      MPM_MAX_RETRIES: ${MPM_MAX_RETRIES:-4}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - mosquitto
+    restart: unless-stopped
+
   dashboard:
     build:
       context: .
