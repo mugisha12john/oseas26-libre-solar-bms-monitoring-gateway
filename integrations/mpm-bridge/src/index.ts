@@ -1,7 +1,8 @@
 import { MpmBridge } from "./bridge.js";
 import { MpmClient } from "./mpm-client.js";
 
-const setting = (name: string, fallback: string): string => process.env[name]?.trim() || fallback;
+const setting = (name: string, fallback: string): string =>
+  process.env[name]?.trim() || fallback;
 
 const bridge = new MpmBridge({
   mqttHost: setting("MQTT_HOST", "mosquitto"),

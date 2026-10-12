@@ -1,5 +1,8 @@
 # Home Assistant
 
+For the exact discovery topics, JSON configuration, and sensor value paths,
+see [the shared MQTT contract](../../docs/MQTT_SPECIFICATION.md#home-assistant-auto-discovery).
+
 Enable the Home Assistant MQTT integration and connect it to the same
 Mosquitto broker. The simulator publishes retained MQTT Discovery configuration
 for the Libre Solar battery as one device. Every entity reads the existing

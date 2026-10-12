@@ -37,7 +37,11 @@ export class BatteryDownsampler {
     return summaries;
   }
 
-  flush(siteId: string, batteryId: string, now = Date.now()): BatteryHealthSummary | undefined {
+  flush(
+    siteId: string,
+    batteryId: string,
+    now = Date.now(),
+  ): BatteryHealthSummary | undefined {
     const key = this.key(siteId, batteryId);
     const snapshot = this.snapshots.get(key);
     if (!snapshot) return undefined;

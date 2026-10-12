@@ -4,6 +4,10 @@ An open, TypeScript-based, Dockerized MVP that publishes realistic Libre Solar B
 data to one canonical MQTT contract. The included simulator makes the complete
 demo runnable without battery hardware.
 
+Start with the [team guide](team.md) for both projects, local startup, the Batteries
+screen, folder responsibilities, and the MQTT-to-MySQL data flow.
+The [MQTT specification](docs/MQTT_SPECIFICATION.md) is the central contract reference.
+
 ## Quick start
 
 ```bash
@@ -16,7 +20,8 @@ mosquitto_sub -h localhost -p 1883 -t 'libre-solar/#' -v
 
 The simulator publishes to `libre-solar/site-001/BAT-001/{telemetry,event,status}`.
 Stop it with `docker compose down`. Copy `.env.example` to `.env` only when you
-want to override defaults; it is never required for local startup.
+want to override defaults. The simulator and dashboard can use defaults;
+the MPM bridge requires `MPM_API_KEY` to forward data successfully.
 
 Set `SIMULATOR_SCENARIO` in `.env` to any supported value:
 `NORMAL`, `CHARGING`, `DISCHARGING`, `LOW_SOC`, `HIGH_TEMPERATURE`, `CELL_IMBALANCE`,

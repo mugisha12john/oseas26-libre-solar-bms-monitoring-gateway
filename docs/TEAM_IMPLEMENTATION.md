@@ -1,5 +1,9 @@
 # Team implementation guide
 
+For local startup, the MPM Batteries screen, folder responsibilities, and the
+MQTT-to-MySQL flow, start with [team.md](../team.md).
+Use [the MQTT specification](MQTT_SPECIFICATION.md) for the shared contract.
+
 Work in phases: keep Mosquitto + simulator passing before adding a consumer.
 Any new BMS producer must emit the schemas unchanged. Add tests for every new
 state or field and never introduce a Home Assistant/Prospect/MPM-specific BMS

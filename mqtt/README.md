@@ -1,5 +1,8 @@
 # MQTT broker
 
+The shared topic and payload contract, including Home Assistant discovery, is
+documented in [the MQTT specification](../docs/MQTT_SPECIFICATION.md).
+
 Mosquitto runs as the `mosquitto` Compose service and is exposed on host port
 `1883`. Containers connect to `mosquitto:1883`; host tools connect to
 `localhost:1883`.

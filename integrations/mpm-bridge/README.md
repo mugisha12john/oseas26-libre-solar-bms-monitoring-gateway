@@ -33,3 +33,6 @@ Check bridge logs with:
 ```bash
 docker compose logs -f mpm-bridge
 ```
+
+For container/source inspection and a side-by-side MQTT/API watcher, see
+[MPM troubleshooting](../mpm/TROUBLESHOOTING.md).

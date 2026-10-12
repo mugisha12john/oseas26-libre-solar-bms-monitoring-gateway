@@ -7,8 +7,9 @@ import type {
   TelemetryMessage,
 } from "./types.js";
 
-const severity = (value: "INFO" | "WARNING" | "CRITICAL"): BatteryFault["severity"] =>
-  value.toLowerCase() as BatteryFault["severity"];
+const severity = (
+  value: "INFO" | "WARNING" | "CRITICAL",
+): BatteryFault["severity"] => value.toLowerCase() as BatteryFault["severity"];
 
 export function healthFromTelemetry(
   telemetry: TelemetryMessage,
@@ -19,7 +20,8 @@ export function healthFromTelemetry(
     site_id: telemetry.site_id,
     soc: telemetry.battery.soc_pct,
     soh: telemetry.battery.soh_percent,
-    cycle_count: telemetry.battery.cycle_count ?? telemetry.battery.cycles ?? null,
+    cycle_count:
+      telemetry.battery.cycle_count ?? telemetry.battery.cycles ?? null,
     cell_imbalance_v: telemetry.cells.imbalance_v,
     max_temperature_c: maxTemperature,
     bms_state: telemetry.bms.state.toLowerCase(),
@@ -47,7 +49,11 @@ export function faultFromEvent(event: EventMessage): BatteryFault {
     rule_id: event.type,
     severity: severity(event.severity),
     title: event.message,
-    evidence: { value: event.value ?? null, unit: event.unit ?? null, event_id: event.event_id },
+    evidence: {
+      value: event.value ?? null,
+      unit: event.unit ?? null,
+      event_id: event.event_id,
+    },
     explanation: event.message,
     status: "open",
     occurred_at: event.timestamp,

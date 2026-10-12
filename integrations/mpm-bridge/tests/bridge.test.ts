@@ -2,13 +2,22 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { BatteryDownsampler } from "../src/downsampler.js";
-import { faultFromAlert, faultFromEvent, healthFromTelemetry } from "../src/mapping.js";
+import {
+  faultFromAlert,
+  faultFromEvent,
+  healthFromTelemetry,
+} from "../src/mapping.js";
 
 const telemetry = {
   battery_id: "BAT-001",
   site_id: "site-001",
   timestamp: "2026-10-09T18:00:00Z",
-  battery: { soc_pct: 78, soh_percent: 93, cycle_count: 324, temperature_c: 32 },
+  battery: {
+    soc_pct: 78,
+    soh_percent: 93,
+    cycle_count: 324,
+    temperature_c: 32,
+  },
   cells: { imbalance_v: 0.012 },
   bms: { state: "NORMAL" },
 };
@@ -16,7 +25,14 @@ const telemetry = {
 test("maps telemetry and keeps interval maximum temperature", () => {
   const downsampler = new BatteryDownsampler(60_000);
   downsampler.ingest(telemetry, 0);
-  downsampler.ingest({ ...telemetry, timestamp: "2026-10-09T18:00:30Z", battery: { ...telemetry.battery, temperature_c: 41 } }, 30_000);
+  downsampler.ingest(
+    {
+      ...telemetry,
+      timestamp: "2026-10-09T18:00:30Z",
+      battery: { ...telemetry.battery, temperature_c: 41 },
+    },
+    30_000,
+  );
   assert.deepEqual(downsampler.due(59_999), []);
   const [summary] = downsampler.due(60_000);
   assert.equal(summary.max_temperature_c, 41);
