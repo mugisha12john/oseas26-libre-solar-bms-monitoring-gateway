@@ -6,13 +6,14 @@ import type {
   Status,
   Telemetry,
 } from "./types.js";
-import { cellMetrics, round } from "./scenarios/common.js";
+import { cellMetrics, defaultCellVoltages, round } from "./scenarios/common.js";
 
 const timestamp = (): string => new Date().toISOString();
 
 export class BatterySimulator {
   private readonly cycles = 324;
   private tick = 0;
+  private scenarioTick = 0;
   private state: BatteryState;
   private eventFlags = new Set<string>();
   private scenarioValue: Scenario;
@@ -23,8 +24,11 @@ export class BatterySimulator {
     scenario: Scenario = "NORMAL",
   ) {
     this.scenarioValue = scenario;
-    const defaultCellVoltages = [3.234, 3.236, 3.238, 3.24];
-    this.state = {
+    this.state = this.initialState(scenario);
+  }
+
+  private initialState(scenario: Scenario): BatteryState {
+    return {
       socPct:
         scenario === "LOW_SOC"
           ? 30
@@ -75,12 +79,16 @@ export class BatterySimulator {
 
   setScenario(scenario: Scenario): void {
     this.scenarioValue = scenario;
+    this.scenarioTick = 0;
     this.eventFlags.clear();
+    // NORMAL is an explicit simulated baseline reset; RECOVERY preserves measurements.
+    if (scenario === "NORMAL") this.state = this.initialState(scenario);
   }
 
   step(): Telemetry {
     this.tick += 1;
-    this.state = scenarioHandlers[this.scenario](this.state, this.tick);
+    this.scenarioTick += 1;
+    this.state = scenarioHandlers[this.scenario](this.state, this.scenarioTick);
     const metrics = cellMetrics(this.state.cellVoltages);
     const { state, error_flags: errorFlags } = this.bmsState(metrics);
 
@@ -264,29 +272,32 @@ export class BatterySimulator {
     const imbalance = metrics.imbalance_v;
     const lowSoc = this.state.socPct <= 30;
     const hot = this.state.temperatureC >= 35;
-    const overCurrent = this.state.packCurrentA >= 30;
+    const overCurrent = Math.abs(this.state.packCurrentA) >= 30;
     const underVoltage = metrics.min_voltage_v <= 3.15;
     const fault =
       this.state.socPct <= 20 ||
       this.state.temperatureC >= 45 ||
       imbalance >= 0.08 ||
+      overCurrent ||
       this.scenario === "FAULT";
 
-    if (this.scenario === "FAULT" || fault)
-      return {
-        state: "FAULT",
-        error_flags: ["OVER_TEMPERATURE", "CELL_VOLTAGE_FAULT", "LOW_SOC"],
-      };
-    if (lowSoc) return { state: "LOW_SOC", error_flags: ["LOW_SOC"] };
-    if (overCurrent)
-      return {
-        state: "FAULT",
-        error_flags: ["OVER_CURRENT", "HIGH_TEMPERATURE"],
-      };
-    if (underVoltage)
-      return { state: "WARNING", error_flags: ["UNDER_VOLTAGE"] };
-    if (hot || imbalance >= 0.05)
-      return { state: "WARNING", error_flags: ["HIGH_TEMPERATURE"] };
-    return { state: "NORMAL", error_flags: [] };
+    const errorFlags: string[] = [];
+    if (lowSoc) errorFlags.push("LOW_SOC");
+    if (hot)
+      errorFlags.push(this.state.temperatureC >= 45 ? "OVER_TEMPERATURE" : "HIGH_TEMPERATURE");
+    if (imbalance >= 0.05)
+      errorFlags.push(imbalance >= 0.08 ? "CELL_VOLTAGE_FAULT" : "CELL_IMBALANCE");
+    if (overCurrent) errorFlags.push("OVER_CURRENT");
+    if (underVoltage) errorFlags.push("UNDER_VOLTAGE");
+    if (this.scenario === "FAULT") errorFlags.push("BMS_FAULT");
+
+    const state = fault
+      ? "FAULT"
+      : hot || imbalance >= 0.05 || underVoltage
+        ? "WARNING"
+        : lowSoc
+          ? "LOW_SOC"
+          : "NORMAL";
+    return { state, error_flags: errorFlags };
   }
 }

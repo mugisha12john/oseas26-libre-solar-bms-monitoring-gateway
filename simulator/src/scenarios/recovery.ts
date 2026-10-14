@@ -1,5 +1,5 @@
 import type { BatteryState } from "../types.js";
-import { clamp, derivePackVoltage, round, setCellVoltages } from "./common.js";
+import { clamp, defaultCellVoltages, derivePackVoltage, round, setCellVoltages } from "./common.js";
 
 export function recoveryScenario(
   state: BatteryState,
@@ -13,9 +13,8 @@ export function recoveryScenario(
   );
   const cellVoltages = setCellVoltages(
     state.cellVoltages.map((cell, index) => {
-      if (index === 3)
-        return round(cell - 0.02 + (tick % 2 === 0 ? 0.008 : 0), 3);
-      return round(cell + 0.016, 3);
+      const target = defaultCellVoltages[index];
+      return round(cell + clamp(target - cell, -0.02, 0.02), 3);
     }),
   );
 

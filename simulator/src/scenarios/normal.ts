@@ -1,5 +1,11 @@
 import type { BatteryState } from "../types.js";
-import { clamp, derivePackVoltage, round, setCellVoltages } from "./common.js";
+import {
+  clamp,
+  defaultCellVoltages,
+  derivePackVoltage,
+  round,
+  setCellVoltages,
+} from "./common.js";
 
 export function normalScenario(
   state: BatteryState,
@@ -13,10 +19,9 @@ export function normalScenario(
   );
   const packCurrentA = round(8.5 + Math.sin(tick / 4.5) * 0.75, 2);
   const cellVoltages = setCellVoltages(
-    state.cellVoltages.map((cell, index) => {
-      const trailing = index === 0 ? 0.0015 : index === 3 ? -0.0012 : 0.0008;
-      return round(cell + trailing * (tick % 2 === 0 ? 1 : -1), 3);
-    }),
+    defaultCellVoltages.map((cell, index) =>
+      round(cell + Math.sin((tick + index) / 5) * 0.001, 3),
+    ),
   );
 
   return {

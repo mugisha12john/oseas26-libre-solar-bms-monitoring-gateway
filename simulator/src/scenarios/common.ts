@@ -1,5 +1,7 @@
 import type { BatteryState } from "../types.js";
 
+export const defaultCellVoltages = [3.234, 3.236, 3.238, 3.24] as const;
+
 export const round = (value: number, places = 3): number =>
   Number(value.toFixed(places));
 

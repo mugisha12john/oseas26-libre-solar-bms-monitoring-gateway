@@ -161,5 +161,89 @@ test("scenario can change at runtime and starts a fresh event condition", () => 
   assert.equal(simulator.nextEvent()?.type, "HIGH_TEMPERATURE");
 
   simulator.setScenario("NORMAL");
+  const normalTelemetry = simulator.step();
+  assert.equal(normalTelemetry.bms.state, "NORMAL");
+  assert.deepEqual(normalTelemetry.bms.error_flags, []);
   assert.equal(simulator.nextEvent(), undefined);
+});
+
+test("NORMAL restores healthy measurements after every abnormal scenario", () => {
+  for (const scenario of allScenarios.filter((value) => value !== "NORMAL")) {
+    const simulator = new BatterySimulator("site-001", "BAT-001", scenario);
+    for (let tick = 0; tick < 10; tick += 1) simulator.step();
+    simulator.setScenario("NORMAL");
+    const restored = simulator.step();
+    assert.equal(restored.bms.state, "NORMAL", scenario);
+    assert.deepEqual(restored.bms.error_flags, [], scenario);
+    assert.ok(restored.cells.imbalance_v < 0.02, scenario);
+    assert.ok(restored.cells.min_voltage_v > 3.15, scenario);
+    assert.ok(restored.battery.temperature_c < 35, scenario);
+    assert.ok(restored.battery.soc_pct > 30, scenario);
+    new MessageValidator().validate("telemetry", restored);
+  }
+});
+
+test("NORMAL stays balanced throughout a long-running simulation", () => {
+  const simulator = new BatterySimulator("site-001", "BAT-001");
+  for (let tick = 0; tick < 50_000; tick += 1) {
+    const message = simulator.step();
+    assert.equal(message.bms.state, "NORMAL");
+    assert.ok(message.cells.imbalance_v < 0.02);
+  }
+});
+
+test("cell faults report only observed conditions", () => {
+  const simulator = new BatterySimulator("site-001", "BAT-001", "CELL_IMBALANCE");
+  const warning = simulator.step();
+  assert.equal(warning.bms.state, "WARNING");
+  assert.deepEqual(warning.bms.error_flags, ["CELL_IMBALANCE"]);
+  const fault = simulator.step();
+  assert.equal(fault.bms.state, "FAULT");
+  assert.deepEqual(fault.bms.error_flags, ["CELL_VOLTAGE_FAULT"]);
+});
+
+test("overcurrent protection takes priority over low SOC", () => {
+  const simulator = new BatterySimulator("site-001", "BAT-001", "LOW_SOC");
+  for (let tick = 0; tick < 10; tick += 1) simulator.step();
+  simulator.setScenario("OVER_CURRENT");
+  const message = simulator.step();
+  assert.equal(message.bms.state, "FAULT");
+  assert.ok(message.bms.error_flags.includes("LOW_SOC"));
+  assert.ok(message.bms.error_flags.includes("OVER_CURRENT"));
+  assert.ok(!message.bms.error_flags.includes("HIGH_TEMPERATURE"));
+});
+
+test("a newly selected scenario starts its ramp independently of uptime", () => {
+  const simulator = new BatterySimulator("site-001", "BAT-001");
+  for (let tick = 0; tick < 100; tick += 1) simulator.step();
+  simulator.setScenario("CELL_IMBALANCE");
+  assert.equal(simulator.step().bms.state, "WARNING");
+  const firstEvent = simulator.nextEvent();
+  simulator.setScenario("NORMAL");
+  simulator.step();
+  simulator.setScenario("CELL_IMBALANCE");
+  assert.equal(simulator.step().bms.state, "WARNING");
+  assert.notEqual(simulator.nextEvent()?.event_id, firstEvent?.event_id);
+});
+
+test("RECOVERY converges from a cell fault and stays healthy", () => {
+  const simulator = new BatterySimulator("site-001", "BAT-001", "CELL_IMBALANCE");
+  for (let tick = 0; tick < 10; tick += 1) simulator.step();
+  simulator.setScenario("RECOVERY");
+  let message = simulator.step();
+  assert.equal(message.bms.state, "FAULT");
+  for (let tick = 0; tick < 100; tick += 1) message = simulator.step();
+  assert.equal(message.bms.state, "NORMAL");
+  assert.ok(message.cells.imbalance_v < 0.02);
+  assert.deepEqual(message.bms.error_flags, []);
+  assert.equal(simulator.nextEvent(), undefined);
+  new MessageValidator().validate("telemetry", message);
+});
+
+test("RECOVERY remains healthy after reaching its target measurements", () => {
+  const simulator = new BatterySimulator("site-001", "BAT-001", "RECOVERY");
+  for (let tick = 0; tick < 100; tick += 1) simulator.step();
+  for (let tick = 0; tick < 100; tick += 1) {
+    assert.equal(simulator.step().bms.state, "NORMAL");
+  }
 });

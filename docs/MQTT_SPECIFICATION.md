@@ -221,6 +221,10 @@ Allowed scenarios: `NORMAL`, `CHARGING`, `DISCHARGING`, `LOW_SOC`, `HIGH_TEMPERA
 All three fields are required; time scale must be a number greater than zero.
 The implementation waits `PUBLISH_INTERVAL_SECONDS / value` between steps, so `2` doubles the step/publish rate.
 Runtime commands are not retained or written into `.env`; restart restores the configured startup scenario and time scale 1.
+`SET_SCENARIO=NORMAL` resets simulated measurements to a healthy baseline on the next published step.
+Other scenario changes preserve measurements and restart the selected scenario's ramp.
+`RECOVERY` gradually converges cell voltages to the healthy baseline while charge and temperature recover.
+Selecting a scenario does not clear stored MPM faults or send commands to real battery hardware.
 
 Demonstrate a scenario change, then restore normal operation:
 
